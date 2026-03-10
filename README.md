@@ -221,3 +221,34 @@ fetch('http://localhost/tu-proyecto/public/api/restaurantes')
 3. El Controlador pide los datos a la Base de Datos a través del **Modelo**.
 4. El Controlador devuelve una respuesta empaquetada en **JSON**.
 5. El cliente recibe el JSON y pinta la interfaz para el usuario final.
+
+## 5. ¿Por qué mover la ruta a `api.php` en lugar de dejarla en `web.php`?
+
+Es una duda muy común: si dejas la ruta en `web.php` y tu controlador devuelve un `response()->json()`, al abrir la URL en el navegador verás el JSON perfectamente (en una petición `GET`). 
+
+Sin embargo, a nivel técnico, dejar un endpoint de API en `web.php` es una mala práctica. La razón principal no es la URL en sí, sino los **Middleware** (los filtros de seguridad y configuración por los que pasa la petición antes de llegar al controlador).
+
+Estas son las tres diferencias y afectaciones principales al no moverlo:
+
+### 1. El problema del CSRF Token (El famoso Error 419)
+El archivo `web.php` está diseñado para páginas web tradicionales y tiene activada por defecto la protección **CSRF** (Cross-Site Request Forgery). 
+* Si intentas hacer una petición `POST`, `PUT` o `DELETE` (por ejemplo, enviar un formulario desde React para guardar una reserva) hacia una ruta en `web.php`, **Laravel bloqueará la petición y devolverá un Error 419 (Page Expired)** porque exigirá un token de seguridad oculto que las APIs no utilizan.
+* En `api.php`, esta protección está desactivada porque las APIs emplean otros métodos de seguridad (como tokens de autenticación Bearer).
+
+### 2. Memoria y Sesiones (Con Estado vs Sin Estado)
+* **`web.php` tiene "Estado" (Stateful):** Cada vez que una petición entra por `web.php`, Laravel arranca el motor de sesiones, lee y escribe cookies, y guarda el estado del usuario en el servidor. Esto consume memoria y recursos.
+* **`api.php` es "Sin Estado" (Stateless):** Las APIs no usan sesiones ni cookies. No recuerdan al usuario entre una petición y otra. Esto hace que tu servidor sea muchísimo más rápido, ligero y capaz de escalar para aguantar miles de peticiones de apps móviles sin colapsar.
+
+### 3. Límite de Peticiones (Rate Limiting)
+* Las rutas en `api.php` vienen protegidas por defecto con un middleware llamado `throttle:api`. Esto limita la cantidad de peticiones que una misma IP puede hacer por minuto (usualmente 60). 
+* Esto es crucial en una API pública para evitar ataques de fuerza bruta (DDoS) o que saturen tu base de datos. `web.php` no aplica esta restricción tan estricta por defecto.
+
+### Resumen comparativo: `web.php` vs `api.php`
+
+| Característica | `web.php` | `api.php` |
+| :--- | :--- | :--- |
+| **Uso ideal** | Vistas Blade, páginas web tradicionales. | Apps móviles, React, Vue, sistemas externos. |
+| **Formato de respuesta** | HTML (generalmente) | JSON (puros datos) |
+| **Manejo de usuarios** | Sesiones y Cookies | Tokens (ej. Laravel Sanctum o JWT) |
+| **Protección CSRF** | Activada (Bloquea POST sin token) | Desactivada |
+| **Prefijo automático** | Ninguno (ej. `tusitio.com/ruta`) | `/api` (ej. `tusitio.com/api/ruta`) |
