@@ -252,3 +252,140 @@ El archivo `web.php` está diseñado para páginas web tradicionales y tiene act
 | **Manejo de usuarios** | Sesiones y Cookies | Tokens (ej. Laravel Sanctum o JWT) |
 | **Protección CSRF** | Activada (Bloquea POST sin token) | Desactivada |
 | **Prefijo automático** | Ninguno (ej. `tusitio.com/ruta`) | `/api` (ej. `tusitio.com/api/ruta`) |
+
+## 6. Arquitecturas: ¿Monolítico, Separado o Híbrido?
+
+Una vez que entiendes la diferencia entre devolver vistas HTML (`web.php`) o datos JSON (`api.php`), surge la gran pregunta: ¿Debo usar solo endpoints y olvidar las vistas de Laravel? La respuesta no es absoluta, depende enteramente de las necesidades técnicas y comerciales de tu proyecto.
+
+Existen tres enfoques principales a la hora de estructurar tu aplicación:
+
+### 1. Modelo Tradicional "Monolítico" (Solo Blade)
+Laravel se encarga de todo de principio a fin: conecta a la base de datos, procesa la lógica en el controlador y dibuja el HTML completo utilizando vistas Blade. No hay endpoints de API (el archivo `api.php` prácticamente no se usa).
+* **¿Cuándo usarlo?** Es ideal para webs corporativas, blogs, o plataformas donde el SEO (posicionamiento en Google) es crítico y la interactividad en la pantalla es moderada. Es la forma más rápida, económica y sencilla de lanzar un proyecto en solitario.
+
+### 2. Modelo 100% Separado (Backend API + Frontend Independiente)
+Laravel funciona **exclusivamente como backend**. Su único trabajo es procesar datos y escupir JSON a través de endpoints en `api.php`. Las vistas Blade desaparecen del servidor. El frontend se construye en un repositorio totalmente independiente usando React, Next.js, Vue, o es una App Móvil nativa.
+* **¿Cuándo usarlo?** Es la opción obligatoria si en tu hoja de ruta está lanzar una aplicación móvil (iOS/Android) además de la web. De esta forma, tanto la web moderna como la app consumen exactamente la misma API, evitando tener que programar la lógica de negocio dos veces.
+
+### 3. El Modelo Híbrido (El punto intermedio estratégico)
+En muchísimos proyectos reales, se mezclan ambos mundos para obtener las ventajas de los dos enfoques.
+* **¿Cómo funciona?** Utilizas el enrutamiento web clásico (`web.php`) y vistas de **Blade** para la estructura principal y pública de la web (Landing page, Quiénes somos, Contacto) asegurando una carga inicial rapidísima y un SEO perfecto. Sin embargo, para las secciones interactivas (ej. un mapa en tiempo real, un buscador dinámico de restaurantes o un panel de usuario complejo), incrustas JavaScript o componentes de Vue/React que se comunican "por debajo" con tus propios endpoints internos (`api.php`).
+
+> **💡 El estándar actual en Laravel:** Hoy en día, para evitar la complejidad de gestionar un frontend separado o programar endpoints manuales para un modelo híbrido, el ecosistema de Laravel utiliza herramientas oficiales como **Livewire** (escribes en PHP/Blade pero se siente como React) o **Inertia.js** (escribes en React/Vue pero te saltas la creación de la API).
+
+## 7. Ejemplo Práctico: Modelo Híbrido (Buscador en Vivo)
+
+En este ejemplo, combinaremos la carga tradicional de una vista Blade con el consumo dinámico de un endpoint interno mediante JavaScript. El objetivo es crear un buscador que muestre resultados instantáneos mientras el usuario escribe, sin recargar la página.
+
+### Paso 1: El Endpoint de Búsqueda (`routes/api.php`)
+Primero, creamos una nueva ruta en nuestra API que recibirá el texto a buscar.
+
+```php
+use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\RestaurantController;
+
+// Endpoint para la búsqueda en vivo: GET /api/restaurantes/buscar?q=texto
+Route::get('/restaurantes/buscar', [RestaurantController::class, 'search']);
+```
+
+### Paso 2: El Controlador (`app/Http/Controllers/RestaurantController.php`)
+Añadimos el método `search` que filtrará la base de datos y devolverá un JSON.
+
+```php
+namespace App\Http\Controllers;
+
+use App\Models\Restaurant;
+use Illuminate\Http\Request;
+
+class RestaurantController extends Controller
+{
+    public function search(Request $request)
+    {
+        // 1. Capturamos lo que el usuario ha escrito (ej. ?q=pizza)
+        $query = $request->input('q');
+
+        // 2. Buscamos en la base de datos coincidencias en el nombre o especialidad
+        $restaurantes = Restaurant::where('nombre', 'LIKE', "%{$query}%")
+                                  ->orWhere('tipo_comida', 'LIKE', "%{$query}%")
+                                  ->get();
+
+        // 3. Devolvemos los resultados en formato JSON
+        return response()->json([
+            'success' => true,
+            'data' => $restaurantes
+        ]);
+    }
+}
+```
+
+### Paso 3: La Vista Híbrida (`resources/views/restaurants/buscador.blade.php`)
+Aquí está la magia. Tenemos una vista de Blade estándar con un campo de texto (`<input>`). Usaremos un pequeño script de JavaScript que "escuche" cada vez que el usuario teclea algo, llame al endpoint y redibuje los resultados.
+
+```html
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Buscador Híbrido - El Cucharón</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; }
+        #resultados { margin-top: 20px; border-top: 2px solid #eee; padding-top: 10px; }
+        .tarjeta { padding: 10px; border-bottom: 1px solid #ddd; }
+    </style>
+</head>
+<body>
+
+    <h1>Encuentra tu restaurante</h1>
+    
+    <input type="text" id="cajaBusqueda" placeholder="Ej. Sushi, Pizzería, Madrid..." style="width: 300px; padding: 10px;">
+
+    <div id="resultados">
+        <p>Escribe algo para empezar a buscar...</p>
+    </div>
+
+    <script>
+        const inputBusqueda = document.getElementById('cajaBusqueda');
+        const divResultados = document.getElementById('resultados');
+
+        // Escuchamos cada vez que se levanta una tecla en el input
+        inputBusqueda.addEventListener('keyup', function() {
+            let texto = this.value;
+
+            // Si el input está vacío, limpiamos la pantalla
+            if (texto.length === 0) {
+                divResultados.innerHTML = '<p>Escribe algo para empezar a buscar...</p>';
+                return;
+            }
+
+            // Llamamos a nuestro propio endpoint de Laravel
+            fetch(`/api/restaurantes/buscar?q=${texto}`)
+                .then(respuesta => respuesta.json())
+                .then(datos => {
+                    // Limpiamos los resultados anteriores
+                    divResultados.innerHTML = ''; 
+
+                    if (datos.data.length === 0) {
+                        divResultados.innerHTML = '<p>No se encontraron restaurantes.</p>';
+                        return;
+                    }
+
+                    // Recorremos el JSON y creamos el HTML para cada restaurante
+                    datos.data.forEach(restaurante => {
+                        divResultados.innerHTML += `
+                            <div class="tarjeta">
+                                <h3>${restaurante.nombre}</h3>
+                                <p>${restaurante.tipo_comida} - ${restaurante.ciudad} (⭐ ${restaurante.puntuacion})</p>
+                            </div>
+                        `;
+                    });
+                })
+                .catch(error => console.error('Error:', error));
+        });
+    </script>
+</body>
+</html>
+```
+
+### ¿Por qué esto es poderoso?
+* **SEO Intacto:** Puedes cargar los 10 mejores restaurantes directamente desde el Controlador Web (`web.php`) cuando la página carga por primera vez.
+* **Experiencia de Usuario (UX):** El usuario no tiene que pulsar un botón de "Buscar" y esperar a que la página parpadee y se recargue por completo. La sensación es la de estar usando una App móvil nativa.
