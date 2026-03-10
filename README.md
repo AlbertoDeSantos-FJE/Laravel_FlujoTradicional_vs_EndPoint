@@ -273,12 +273,12 @@ En muchísimos proyectos reales, se mezclan ambos mundos para obtener las ventaj
 
 > **💡 El estándar actual en Laravel:** Hoy en día, para evitar la complejidad de gestionar un frontend separado o programar endpoints manuales para un modelo híbrido, el ecosistema de Laravel utiliza herramientas oficiales como **Livewire** (escribes en PHP/Blade pero se siente como React) o **Inertia.js** (escribes en React/Vue pero te saltas la creación de la API).
 
-## 7. Ejemplo Práctico: Modelo Híbrido (Buscador en Vivo)
+## 7. Ejemplo Práctico: Modelo Híbrido (Buscador en Vivo con JS separado)
 
-En este ejemplo, combinaremos la carga tradicional de una vista Blade con el consumo dinámico de un endpoint interno mediante JavaScript. El objetivo es crear un buscador que muestre resultados instantáneos mientras el usuario escribe, sin recargar la página.
+En este ejemplo, combinaremos la carga de una vista Blade con un archivo JavaScript externo que consumirá nuestro endpoint para crear un buscador en vivo.
 
 ### Paso 1: El Endpoint de Búsqueda (`routes/api.php`)
-Primero, creamos una nueva ruta en nuestra API que recibirá el texto a buscar.
+Creamos la ruta en nuestra API que recibirá el texto a buscar.
 
 ```php
 use Illuminate\Support\Facades\Route;
@@ -304,12 +304,12 @@ class RestaurantController extends Controller
         // 1. Capturamos lo que el usuario ha escrito (ej. ?q=pizza)
         $query = $request->input('q');
 
-        // 2. Buscamos en la base de datos coincidencias en el nombre o especialidad
+        // 2. Buscamos coincidencias
         $restaurantes = Restaurant::where('nombre', 'LIKE', "%{$query}%")
                                   ->orWhere('tipo_comida', 'LIKE', "%{$query}%")
                                   ->get();
 
-        // 3. Devolvemos los resultados en formato JSON
+        // 3. Devolvemos los resultados en JSON
         return response()->json([
             'success' => true,
             'data' => $restaurantes
@@ -318,8 +318,56 @@ class RestaurantController extends Controller
 }
 ```
 
-### Paso 3: La Vista Híbrida (`resources/views/restaurants/buscador.blade.php`)
-Aquí está la magia. Tenemos una vista de Blade estándar con un campo de texto (`<input>`). Usaremos un pequeño script de JavaScript que "escuche" cada vez que el usuario teclea algo, llame al endpoint y redibuje los resultados.
+### Paso 3: El Archivo JavaScript (`public/js/buscador.js`)
+En Laravel, los archivos estáticos que lee el navegador deben ir en la carpeta `public`. Creamos una carpeta `js` dentro de `public` y añadimos nuestro script.
+
+```javascript
+// Archivo: public/js/buscador.js
+
+// Esperamos a que el HTML esté completamente cargado
+document.addEventListener('DOMContentLoaded', function() {
+    
+    const inputBusqueda = document.getElementById('cajaBusqueda');
+    const divResultados = document.getElementById('resultados');
+
+    // Escuchamos cada vez que se levanta una tecla en el input
+    inputBusqueda.addEventListener('keyup', function() {
+        let texto = this.value;
+
+        // Si el input está vacío, restauramos el mensaje inicial
+        if (texto.length === 0) {
+            divResultados.innerHTML = '<p>Escribe algo para empezar a buscar...</p>';
+            return;
+        }
+
+        // Llamamos a nuestro endpoint de Laravel
+        fetch(`/api/restaurantes/buscar?q=${texto}`)
+            .then(respuesta => respuesta.json())
+            .then(datos => {
+                divResultados.innerHTML = ''; 
+
+                if (datos.data.length === 0) {
+                    divResultados.innerHTML = '<p>No se encontraron restaurantes.</p>';
+                    return;
+                }
+
+                // Generamos el HTML para cada restaurante
+                datos.data.forEach(restaurante => {
+                    divResultados.innerHTML += `
+                        <div class="tarjeta">
+                            <h3>${restaurante.nombre}</h3>
+                            <p>${restaurante.tipo_comida} - ${restaurante.ciudad} (⭐ ${restaurante.puntuacion})</p>
+                        </div>
+                    `;
+                });
+            })
+            .catch(error => console.error('Error en la búsqueda:', error));
+    });
+});
+```
+
+### Paso 4: La Vista Híbrida (`resources/views/restaurants/buscador.blade.php`)
+Nuestra vista de Blade ahora queda mucho más limpia. Solo contiene el HTML y una etiqueta `<script>` que llama al archivo externo usando la función `asset()` de Laravel, la cual genera la ruta correcta hacia la carpeta `public`.
 
 ```html
 <!DOCTYPE html>
@@ -343,49 +391,10 @@ Aquí está la magia. Tenemos una vista de Blade estándar con un campo de texto
         <p>Escribe algo para empezar a buscar...</p>
     </div>
 
-    <script>
-        const inputBusqueda = document.getElementById('cajaBusqueda');
-        const divResultados = document.getElementById('resultados');
-
-        // Escuchamos cada vez que se levanta una tecla en el input
-        inputBusqueda.addEventListener('keyup', function() {
-            let texto = this.value;
-
-            // Si el input está vacío, limpiamos la pantalla
-            if (texto.length === 0) {
-                divResultados.innerHTML = '<p>Escribe algo para empezar a buscar...</p>';
-                return;
-            }
-
-            // Llamamos a nuestro propio endpoint de Laravel
-            fetch(`/api/restaurantes/buscar?q=${texto}`)
-                .then(respuesta => respuesta.json())
-                .then(datos => {
-                    // Limpiamos los resultados anteriores
-                    divResultados.innerHTML = ''; 
-
-                    if (datos.data.length === 0) {
-                        divResultados.innerHTML = '<p>No se encontraron restaurantes.</p>';
-                        return;
-                    }
-
-                    // Recorremos el JSON y creamos el HTML para cada restaurante
-                    datos.data.forEach(restaurante => {
-                        divResultados.innerHTML += `
-                            <div class="tarjeta">
-                                <h3>${restaurante.nombre}</h3>
-                                <p>${restaurante.tipo_comida} - ${restaurante.ciudad} (⭐ ${restaurante.puntuacion})</p>
-                            </div>
-                        `;
-                    });
-                })
-                .catch(error => console.error('Error:', error));
-        });
-    </script>
+    <script src="{{ asset('js/buscador.js') }}"></script>
+    
 </body>
 </html>
 ```
 
-### ¿Por qué esto es poderoso?
-* **SEO Intacto:** Puedes cargar los 10 mejores restaurantes directamente desde el Controlador Web (`web.php`) cuando la página carga por primera vez.
-* **Experiencia de Usuario (UX):** El usuario no tiene que pulsar un botón de "Buscar" y esperar a que la página parpadee y se recargue por completo. La sensación es la de estar usando una App móvil nativa.
+*(Nota técnica: En proyectos de Laravel más avanzados, los archivos JS se suelen colocar en `resources/js/` y se compilan hacia la carpeta `public` usando una herramienta llamada Vite, pero para scripts sencillos, ponerlos directamente en `public/js/` es perfectamente válido y funcional).*
