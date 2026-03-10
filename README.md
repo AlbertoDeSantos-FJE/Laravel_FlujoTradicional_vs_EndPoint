@@ -2,6 +2,8 @@
 
 Esta guía explica qué es un endpoint y cómo implementarlo en un proyecto de Laravel utilizando el ejemplo de una aplicación de reserva de restaurantes tipo "The Fork" (nuestro proyecto ficticio: "El Cucharón").
 
+
+
 ---
 
 ## 1. ¿Qué es un endpoint?
@@ -84,8 +86,18 @@ class Restaurant extends Model
 }
 ```
 
-**4. Controlador Web (`app/Http/Controllers/RestaurantController.php`)**
-Toma los datos del modelo y los envía a una vista HTML.
+**4. Ruta Web (`routes/web.php`)**
+Define la URL para acceder a la página web. Es la puerta de entrada de la petición.
+```php
+use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\RestaurantController;
+
+// Cuando el usuario entra a la URL, Laravel lo envía al Controlador
+Route::get('/restaurantes', [RestaurantController::class, 'index']);
+```
+
+**5. Controlador Web (`app/Http/Controllers/RestaurantController.php`)**
+Recibe la petición de la ruta, toma los datos del modelo y los envía a la vista HTML final.
 ```php
 namespace App\Http\Controllers;
 
@@ -97,26 +109,46 @@ class RestaurantController extends Controller
     public function index()
     {
         $restaurantes = Restaurant::all();
-        // Devuelve una vista de Blade (HTML)
+        // Le pasamos la variable $restaurantes a la vista
         return view('restaurants.index', compact('restaurantes')); 
     }
 }
 ```
 
-**5. Ruta Web (`routes/web.php`)**
-Define la URL para acceder a la página web.
-```php
-use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\RestaurantController;
+**6. Vista Final (`resources/views/restaurants/index.blade.php`)**
+La interfaz (HTML + Blade) que se pinta en el navegador del usuario utilizando los datos que le envió el controlador.
+```html
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>El Cucharón - Restaurantes</title>
+</head>
+<body>
+    <h1>Restaurantes Disponibles</h1>
 
-Route::get('/restaurantes', [RestaurantController::class, 'index']);
+    @if($restaurantes->isEmpty())
+        <p>Aún no hay restaurantes registrados.</p>
+    @else
+        <ul>
+        @foreach($restaurantes as $restaurante)
+            <li>
+                <strong>{{ $restaurante->nombre }}</strong> ({{ $restaurante->ciudad }}) 
+                - Especialidad: {{ $restaurante->tipo_comida }} 
+                - Puntuación: {{ $restaurante->puntuacion }}/5
+            </li>
+        @endforeach
+        </ul>
+    @endif
+</body>
+</html>
 ```
 
 ---
 
 ## 3. Transformación a un Flujo de API (Usando Endpoints)
 
-En las aplicaciones modernas (apps móviles o frontends separados en React/Vue), el backend no devuelve HTML, sino datos puros. La Base de Datos, la Migración y el Modelo **se mantienen exactamente igual**. Solo cambiamos el Controlador y las Rutas.
+En las aplicaciones modernas (apps móviles o frontends separados en React/Vue), el backend no devuelve HTML, sino datos puros. La Base de Datos, la Migración y el Modelo **se mantienen exactamente igual**. Solo cambiamos el Controlador y las Rutas, y la Vista desaparece del backend.
 
 
 
@@ -163,7 +195,7 @@ Route::get('/restaurantes', [RestaurantController::class, 'index']);
 ```
 
 ### Paso 3: Consumo desde el Frontend (El cliente)
-Ya no hay vista Blade. El frontend (React, Vue, App Móvil o JS puro) consume el endpoint haciendo una petición HTTP por debajo:
+Ya no hay vista Blade en Laravel. El frontend (React, Vue, App Móvil o JS puro) consume el endpoint haciendo una petición HTTP por debajo:
 
 ```javascript
 // Ejemplo de consumo en JavaScript (Frontend / Cliente)
