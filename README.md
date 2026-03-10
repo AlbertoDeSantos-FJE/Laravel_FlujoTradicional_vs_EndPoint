@@ -481,3 +481,59 @@ export default function RestaurantSearch() {
 
 > **⚠️ El obstáculo más común: CORS (Cross-Origin Resource Sharing)**
 > Cuando pasas a este modelo, normalmente tu frontend en React corre en un puerto (ej. `http://localhost:3000`) y tu backend de Laravel en otro (ej. `http://localhost:8000`). Por seguridad, los navegadores bloquean peticiones entre puertos distintos. Para que este código de React funcione, tendrás que configurar Laravel (en su archivo `config/cors.php` o archivo de configuración principal según la versión) para decirle: *"Oye, permite que el puerto 3000 me pida datos"*.
+
+## 9. El "Jefe Final": Configurar CORS en Laravel
+
+Cuando separas tu frontend (React, Vue, etc.) del backend (Laravel), es casi seguro que te vas a enfrentar al error más famoso de las APIs: el bloqueo por **CORS** (Cross-Origin Resource Sharing).
+
+### ¿Qué es CORS y por qué ocurre?
+Imagina que el navegador web es un guarda de seguridad muy estricto. Por defecto, tiene una regla fundamental: *"Si la página web cargó desde `http://localhost:3000` (React), solo le dejaré pedir datos a ese mismo sitio"*. 
+
+Cuando React intenta pedirle el JSON de los restaurantes a tu Laravel (que vive en otro "edificio": `http://localhost:8000`), el guarda se asusta por motivos de seguridad, bloquea la puerta y te lanza un error rojo en la consola. 
+
+La solución es decirle a Laravel que emita un pase VIP (cabeceras HTTP) indicando que confía plenamente en el edificio de React.
+
+### La solución: Darle permiso a tu Frontend
+
+**Paso 1: Localizar o crear el archivo de configuración**
+Dependiendo de tu versión de Laravel, el archivo de CORS está en un sitio u otro:
+* **En Laravel 11 y superiores:** El archivo viene oculto por defecto para mantener la carpeta limpia. Para generarlo, ejecuta este comando en la terminal de tu proyecto Laravel:
+  `php artisan config:publish cors`
+* **En Laravel 10 o inferiores:** El archivo ya existe y lo encontrarás directamente en `config/cors.php`.
+
+**Paso 2: Modificar `config/cors.php`**
+Abre ese archivo. Verás un array de configuración. Lo único que nos interesa cambiar es la clave `'allowed_origins'`, que es la "lista de invitados" de tu API.
+
+```php
+// Archivo: config/cors.php
+
+return [
+    // 1. ¿A qué rutas aplicamos estas reglas? (Normalmente a toda la API)
+    'paths' => ['api/*', 'sanctum/csrf-cookie'],
+
+    // 2. ¿Qué métodos permitimos? (GET, POST, PUT, DELETE)
+    'allowed_methods' => ['*'],
+
+    // 3. LA CLAVE: ¿A quién le damos permiso para leer nuestros datos?
+    // Opción A (Recomendada/Segura): Pones la URL exacta de tu React/Vite
+    'allowed_origins' => ['http://localhost:3000', 'http://localhost:5173'], 
+    
+    // Opción B (Modo "Desarrollo Rápido"): El asterisco permite a CUALQUIERA
+    // 'allowed_origins' => ['*'], 
+
+    'allowed_origins_patterns' => [],
+
+    // 4. ¿Qué cabeceras permitimos? (Déjalo en *)
+    'allowed_headers' => ['*'],
+
+    'exposed_headers' => [],
+    'max_age' => 0,
+    'supports_credentials' => false,
+];
+```
+
+**Paso 3: Limpiar la caché (Por si acaso)**
+A veces Laravel guarda las configuraciones en memoria. Para asegurarte de que lee tus nuevos permisos, ejecuta:
+`php artisan config:clear`
+
+¡Y listo! Una vez hecho esto, recarga tu página de React. El error rojo desaparecerá y verás la lista de tus restaurantes fluir mágicamente desde tu base de datos MySQL hasta tu interfaz moderna.
