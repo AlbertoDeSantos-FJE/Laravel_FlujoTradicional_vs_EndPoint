@@ -398,3 +398,86 @@ Nuestra vista de Blade ahora queda mucho más limpia. Solo contiene el HTML y un
 ```
 
 *(Nota técnica: En proyectos de Laravel más avanzados, los archivos JS se suelen colocar en `resources/js/` y se compilan hacia la carpeta `public` usando una herramienta llamada Vite, pero para scripts sencillos, ponerlos directamente en `public/js/` es perfectamente válido y funcional).*
+
+## 8. El salto a React: Modelo 100% Separado
+
+Si decides dar el salto y usar un frontend moderno e independiente como React, ¡la buena noticia es que el trabajo en Laravel ya está hecho! 
+
+En este escenario, los **Pasos 1 y 2 (La Ruta en `api.php` y el Controlador)** del ejemplo anterior se mantienen **exactamente iguales**. Tu backend sigue sirviendo el mismo JSON en el endpoint `/api/restaurantes/buscar`. No tienes que tocar ni una línea de PHP.
+
+Lo que cambia es que el archivo JavaScript (`public/js/buscador.js`) y la vista Blade (`buscador.blade.php`) desaparecen de Laravel. En su lugar, en tu proyecto independiente de React, tendrías un componente como este:
+
+### El Componente React (`RestaurantSearch.jsx`)
+
+```jsx
+import React, { useState } from 'react';
+
+export default function RestaurantSearch() {
+    // Definimos los "estados" de React para guardar la información
+    const [query, setQuery] = useState('');
+    const [resultados, setResultados] = useState([]);
+    const [mensaje, setMensaje] = useState('Escribe algo para empezar a buscar...');
+
+    // Función que se ejecuta cada vez que el usuario teclea
+    const buscarRestaurantes = async (texto) => {
+        setQuery(texto);
+
+        if (texto.length === 0) {
+            setResultados([]);
+            setMensaje('Escribe algo para empezar a buscar...');
+            return;
+        }
+
+        try {
+            // Llamamos al endpoint de nuestro backend en Laravel
+            // Nota: Al estar separados, indicamos la URL completa del servidor backend
+            const respuesta = await fetch(`http://localhost:8000/api/restaurantes/buscar?q=${texto}`);
+            const datos = await respuesta.json();
+
+            if (datos.data.length === 0) {
+                setResultados([]);
+                setMensaje('No se encontraron restaurantes.');
+            } else {
+                setResultados(datos.data);
+                setMensaje(''); // Ocultamos el mensaje inicial
+            }
+        } catch (error) {
+            console.error('Error al conectar con la API:', error);
+            setMensaje('Error de conexión con el servidor.');
+        }
+    };
+
+    return (
+        <div style={{ padding: '20px', fontFamily: 'sans-serif' }}>
+            <h1>Encuentra tu restaurante</h1>
+            
+            {/* El campo de búsqueda */}
+            <input 
+                type="text" 
+                value={query}
+                onChange={(e) => buscarRestaurantes(e.target.value)}
+                placeholder="Ej. Sushi, Pizzería, Madrid..." 
+                style={{ width: '300px', padding: '10px' }}
+            />
+
+            {/* Contenedor de resultados */}
+            <div style={{ marginTop: '20px', borderTop: '2px solid #eee', paddingTop: '10px' }}>
+                
+                {/* Mostramos el mensaje si existe */}
+                {mensaje && <p>{mensaje}</p>}
+                
+                {/* Iteramos sobre el array de resultados para dibujar las tarjetas */}
+                {resultados.map((restaurante) => (
+                    <div key={restaurante.id} style={{ padding: '10px', borderBottom: '1px solid #ddd' }}>
+                        <h3>{restaurante.nombre}</h3>
+                        <p>{restaurante.tipo_comida} - {restaurante.ciudad} (⭐ {restaurante.puntuacion})</p>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+```
+
+> **⚠️ El obstáculo más común: CORS (Cross-Origin Resource Sharing)**
+> Cuando pasas a este modelo, normalmente tu frontend en React corre en un puerto (ej. `http://localhost:3000`) y tu backend de Laravel en otro (ej. `http://localhost:8000`). Por seguridad, los navegadores bloquean peticiones entre puertos distintos. Para que este código de React funcione, tendrás que configurar Laravel (en su archivo `config/cors.php` o archivo de configuración principal según la versión) para decirle: *"Oye, permite que el puerto 3000 me pida datos"*.
